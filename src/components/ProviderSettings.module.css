@@ -1,0 +1,107 @@
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.radioGroup {
+  display: flex;
+  gap: 16px;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.radioLabel input {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.apiKeyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.apiKeyLabel {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.apiKeyInput {
+  flex: 1;
+  min-width: 240px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+
+.apiKeyInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.formatRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
