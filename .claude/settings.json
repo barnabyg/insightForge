@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  "permissions": {
+    "allow": [
+      "Edit",
+      "MultiEdit",
+      "Write",
+
+      "Bash(npm run *)",
+      "Bash(npx *)",
+      "Bash(npm test *)",
+      "Bash(npm install *)",
+      "Bash(npm ci)",
+      "Bash(npm run lint *)",
+      "Bash(npm run format *)",
+      "Bash(npm run build *)",
+      "Bash(npm run test:*)",
+
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git stash *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)"
+    ],
+    "deny": [
+      "Bash(git push *--force*)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f*)",
+      "Bash(npm publish*)",
+      "Bash(rm -rf node_modules)"
+    ]
+  }
+}
