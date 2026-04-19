@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 
 const MODEL = 'gpt-image-1'
 const SIZE = '1024x1024'
-const QUALITY = 'low'
+const QUALITY = 'medium'
 const TIMEOUT_MS = 120_000
 
 export interface GeneratedImage {
