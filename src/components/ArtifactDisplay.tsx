@@ -20,6 +20,14 @@ export default function ArtifactDisplay({ artifact, stageName }: Props) {
     )
   }
 
+  if (artifact.status === 'skipped') {
+    return (
+      <div className={styles.skipped}>
+        {artifact.error ?? 'This stage was skipped.'}
+      </div>
+    )
+  }
+
   if (artifact.status === 'error') {
     return (
       <div className={styles.container}>

@@ -6,5 +6,6 @@ export const INSIGHT_TRIAGE: Workflow = {
   stages: [
     { id: 'stage-1', name: 'Insight → Design Brief', position: 0 },
     { id: 'stage-2', name: 'Design Brief → PRD', position: 1 },
+    { id: 'stage-3', name: 'PRD → Mockup Prompt', position: 2 },
   ],
 }

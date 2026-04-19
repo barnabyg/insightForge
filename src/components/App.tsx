@@ -4,6 +4,7 @@ import { sessionReducer, INITIAL_SESSION } from '../workflow/session.reducer'
 import { runStage } from '../workflow/engine'
 import { getProvider } from '../providers'
 import type { ProviderSettings } from '../providers/types'
+import { generateOpenAIImage } from '../providers/openai-image'
 import { loadSettings, saveSettings } from '../storage/settings'
 import {
   loadPrompts,
@@ -13,8 +14,10 @@ import {
 } from '../storage/prompts'
 import stage1Default from '../prompts/stage1.txt?raw'
 import stage2Default from '../prompts/stage2.txt?raw'
+import stage3Default from '../prompts/stage3.txt?raw'
 import ProviderSettingsPanel from './ProviderSettings'
 import WorkflowView from './WorkflowView'
+import MockupImagePanel, { type MockupImageState } from './MockupImagePanel'
 import styles from './App.module.css'
 
 const WORKFLOW = INSIGHT_TRIAGE
@@ -22,7 +25,11 @@ const WORKFLOW = INSIGHT_TRIAGE
 const PROMPT_DEFAULTS: Record<string, string> = {
   'stage-1': stage1Default,
   'stage-2': stage2Default,
+  'stage-3': stage3Default,
 }
+
+const MOCKUP_STAGE_ID = 'stage-3'
+const MOCKUP_SKIP_REASON = 'Image prompt generation requires OpenAI. Switch provider to OpenAI to enable this stage.'
 
 export default function App() {
   const [session, dispatch] = useReducer(sessionReducer, INITIAL_SESSION)
@@ -31,7 +38,9 @@ export default function App() {
     loadPrompts(WORKFLOW, PROMPT_DEFAULTS),
   )
   const [isRunning, setIsRunning] = useState(false)
+  const [mockupImage, setMockupImage] = useState<MockupImageState>({ status: 'idle' })
   const abortControllerRef = useRef<AbortController | null>(null)
+  const imageAbortControllerRef = useRef<AbortController | null>(null)
   // Always reflects the latest session state — used by async callbacks to
   // avoid reading stale closure values during multi-stage pipeline runs.
   const sessionRef = useRef(session)
@@ -42,11 +51,22 @@ export default function App() {
     saveSettings(providerSettings)
   }, [providerSettings])
 
+  useEffect(() => {
+    const artifact = session.artifacts[MOCKUP_STAGE_ID]
+    if (artifact?.status !== 'complete' || artifact.content !== mockupImage.prompt) {
+      if (mockupImage.status !== 'idle') {
+        setMockupImage({ status: 'idle' })
+      }
+    }
+  }, [session.artifacts, mockupImage.prompt, mockupImage.status])
+
   function handleInsightChange(value: string) {
+    clearMockupImage()
     dispatch({ type: 'SET_INSIGHT', insight: value })
   }
 
   function handleTemplateChange(stageId: string, value: string) {
+    if (stageId === MOCKUP_STAGE_ID) clearMockupImage()
     setTemplates((prev) => ({ ...prev, [stageId]: value }))
   }
 
@@ -74,6 +94,9 @@ export default function App() {
     reader.onload = () => {
       try {
         const imported = importPromptsFromJSON(reader.result as string)
+        if (Object.prototype.hasOwnProperty.call(imported, MOCKUP_STAGE_ID)) {
+          clearMockupImage()
+        }
         setTemplates((prev) => ({ ...prev, ...imported }))
         savePrompts({ ...templates, ...imported })
       } catch (err) {
@@ -95,9 +118,13 @@ export default function App() {
       const prevStage = stage.position === 0
         ? null
         : WORKFLOW.stages[stage.position - 1] ?? null
-      const inputContent = stage.position === 0
-        ? currentSession.insight
-        : (currentSession.artifacts[prevStage?.id ?? '']?.content ?? '')
+      if (stage.position > 0 && !prevStage) return
+      const prevStageId = prevStage?.id ?? ''
+
+      let inputContent = currentSession.insight
+      if (stage.position > 0) {
+        inputContent = currentSession.artifacts[prevStageId]?.content ?? ''
+      }
 
       const template = templates[stageId] ?? ''
       const provider = getProvider(providerSettings)
@@ -124,6 +151,8 @@ export default function App() {
   )
 
   async function handleRunStage(stageId: string) {
+    if (stageId === MOCKUP_STAGE_ID && providerSettings.provider !== 'openai') return
+    clearMockupImage()
     cancel()
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -139,6 +168,7 @@ export default function App() {
   }
 
   async function handleRunAll() {
+    clearMockupImage()
     cancel()
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -147,6 +177,16 @@ export default function App() {
     try {
       for (const stage of WORKFLOW.stages) {
         if (controller.signal.aborted) break
+
+        if (stage.id === MOCKUP_STAGE_ID && providerSettings.provider !== 'openai') {
+          dispatch({
+            type: 'SET_ARTIFACT_SKIPPED',
+            stageId: MOCKUP_STAGE_ID,
+            reason: MOCKUP_SKIP_REASON,
+          })
+          break
+        }
+
         await executeStage(stage.id, controller.signal)
 
         // Check if the stage errored — stop pipeline if so
@@ -171,6 +211,56 @@ export default function App() {
 
   function handleRetryStage(stageId: string) {
     void handleRunStage(stageId)
+  }
+
+  function clearMockupImage() {
+    if (imageAbortControllerRef.current) {
+      imageAbortControllerRef.current.abort()
+      imageAbortControllerRef.current = null
+    }
+    setMockupImage({ status: 'idle' })
+  }
+
+  async function handleGenerateMockupImage() {
+    const artifact = sessionRef.current.artifacts[MOCKUP_STAGE_ID]
+    const prompt = artifact ? artifact.content.trim() : ''
+    if (!prompt) return
+    if (providerSettings.provider !== 'openai') return
+
+    if (imageAbortControllerRef.current) {
+      imageAbortControllerRef.current.abort()
+    }
+
+    const controller = new AbortController()
+    imageAbortControllerRef.current = controller
+    setMockupImage({ status: 'generating', prompt })
+
+    try {
+      const result = await generateOpenAIImage(
+        providerSettings.apiKey ?? '',
+        prompt,
+        controller.signal,
+      )
+
+      if (imageAbortControllerRef.current !== controller) return
+      setMockupImage({
+        status: 'ready',
+        dataUrl: result.dataUrl,
+        prompt,
+      })
+    } catch (err) {
+      if (controller.signal.aborted) return
+      if (imageAbortControllerRef.current !== controller) return
+      setMockupImage({
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Image generation failed',
+        prompt,
+      })
+    } finally {
+      if (imageAbortControllerRef.current === controller) {
+        imageAbortControllerRef.current = null
+      }
+    }
   }
 
   // Cascade clear when insight changes: handled inside reducer (SET_INSIGHT clears all)
@@ -205,6 +295,22 @@ export default function App() {
         onTemplateSave={handleTemplateSave}
         onTemplateExport={handleTemplateExport}
         onTemplateImport={handleTemplateImport}
+        getRunLabel={(stageId) => stageId === MOCKUP_STAGE_ID ? 'Generate mockup prompt' : undefined}
+        getUnavailableReason={(stageId) =>
+          stageId === MOCKUP_STAGE_ID && providerSettings.provider !== 'openai'
+            ? MOCKUP_SKIP_REASON
+            : undefined}
+        renderExtraContent={(stageId) =>
+          stageId === MOCKUP_STAGE_ID && session.artifacts[MOCKUP_STAGE_ID]?.status === 'complete'
+            ? (
+                <MockupImagePanel
+                  image={mockupImage}
+                  canGenerate={providerSettings.provider === 'openai'}
+                  disabled={isRunning}
+                  onGenerate={() => { void handleGenerateMockupImage() }}
+                />
+              )
+            : null}
       />
     </div>
   )

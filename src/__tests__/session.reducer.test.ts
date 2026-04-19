@@ -196,3 +196,39 @@ describe('SET_ARTIFACT_ERROR', () => {
     expect(next.artifacts['stage-1']?.content).toBe('')
   })
 })
+
+// ---------------------------------------------------------------------------
+// SET_ARTIFACT_SKIPPED
+// ---------------------------------------------------------------------------
+
+describe('SET_ARTIFACT_SKIPPED', () => {
+  it('creates a skipped artifact with an optional reason', () => {
+    const next = sessionReducer(withInsight('x'), {
+      type: 'SET_ARTIFACT_SKIPPED',
+      stageId: 'stage-3',
+      reason: 'OpenAI required',
+    })
+    expect(next.artifacts['stage-3']).toEqual({
+      stageId: 'stage-3',
+      content: '',
+      status: 'skipped',
+      error: 'OpenAI required',
+    })
+  })
+
+  it('overwrites an existing artifact with skipped state', () => {
+    const state = stateWithArtifacts('x', {
+      'stage-3': { stageId: 'stage-3', content: 'partial', status: 'streaming' },
+    })
+    const next = sessionReducer(state, {
+      type: 'SET_ARTIFACT_SKIPPED',
+      stageId: 'stage-3',
+    })
+    expect(next.artifacts['stage-3']).toEqual({
+      stageId: 'stage-3',
+      content: '',
+      status: 'skipped',
+      error: undefined,
+    })
+  })
+})

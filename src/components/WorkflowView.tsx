@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Workflow, SessionState } from '../workflow/types'
 import InsightInput from './InsightInput'
 import StageCard from './StageCard'
@@ -17,6 +18,9 @@ interface Props {
   onTemplateSave: (stageId: string) => void
   onTemplateExport: (stageId: string) => void
   onTemplateImport: (stageId: string, file: File) => void
+  getRunLabel?: (stageId: string) => string | undefined
+  getUnavailableReason?: (stageId: string) => string | undefined
+  renderExtraContent?: (stageId: string) => ReactNode
 }
 
 export default function WorkflowView({
@@ -33,11 +37,15 @@ export default function WorkflowView({
   onTemplateSave,
   onTemplateExport,
   onTemplateImport,
+  getRunLabel,
+  getUnavailableReason,
+  renderExtraContent,
 }: Props) {
   const canRunAll = session.insight.trim().length > 0 && !isRunning
 
   function canRunStage(stageId: string): boolean {
     if (isRunning) return false
+    if (getUnavailableReason?.(stageId)) return false
     const stage = workflow.stages.find((s) => s.id === stageId)
     if (!stage) return false
     if (stage.position === 0) return session.insight.trim().length > 0
@@ -77,6 +85,9 @@ export default function WorkflowView({
               template={templates[stage.id] ?? ''}
               isRunning={isRunning}
               canRun={canRunStage(stage.id)}
+              runLabel={getRunLabel?.(stage.id)}
+              unavailableReason={getUnavailableReason?.(stage.id)}
+              extraContent={renderExtraContent?.(stage.id)}
               onRun={() => { onRunStage(stage.id); }}
               onRetry={() => { onRetryStage(stage.id); }}
               onTemplateChange={(v) => { onTemplateChange(stage.id, v); }}

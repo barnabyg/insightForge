@@ -1,159 +1,336 @@
 # InsightForge
 
-A structured triage tool for product ideas. Paste a raw insight, run it through a two-stage LLM pipeline, and get a Design Brief followed by a full PRD — not as a verdict, but as a thinking framework that forces the important questions to the surface.
+InsightForge is a browser-based triage tool for rough product ideas. You paste an initial insight, run it through a fixed workflow, and get:
 
-Built as a pure frontend SPA with no backend. Deployable as static files.
+1. A Design Brief
+2. A triage PRD
+3. A mockup-image prompt that can optionally be sent to OpenAI image generation
 
----
+It is a pure frontend SPA built with React and Vite. There is no backend, no server-side storage, and no hidden configuration layer. What you configure in the UI is what the app uses.
 
-## Setup
+## What The App Actually Does
 
-### Prerequisites
+The workflow is hardcoded in [src/workflow/definition.ts](/C:/docs/git/insightForge/src/workflow/definition.ts):
+
+1. `stage-1`: `Insight -> Design Brief`
+2. `stage-2`: `Design Brief -> PRD`
+3. `stage-3`: `PRD -> Mockup Prompt`
+
+Each stage uses a prompt template from [src/prompts/stage1.txt](/C:/docs/git/insightForge/src/prompts/stage1.txt), [src/prompts/stage2.txt](/C:/docs/git/insightForge/src/prompts/stage2.txt), and [src/prompts/stage3.txt](/C:/docs/git/insightForge/src/prompts/stage3.txt). The templates are editable in the UI and can be saved to browser storage.
+
+The app streams model output as it arrives. If you edit the original insight or rerun a stage, that stage and every downstream artifact are cleared before execution. That cascade behavior lives in [src/workflow/session.reducer.ts](/C:/docs/git/insightForge/src/workflow/session.reducer.ts) and [src/components/App.tsx](/C:/docs/git/insightForge/src/components/App.tsx).
+
+## Requirements
 
 - Node.js 20+
 - npm 9+
-- Either: an OpenAI API key, or [KoboldCPP](https://github.com/LostRuins/koboldcpp) running locally on port 5001
+- One of:
+- OpenAI API access
+- A local KoboldCPP instance listening on `http://localhost:5001`
 
-### Install and run
+## Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Open `http://localhost:5173`.
 
-### Configure your LLM provider
+Available scripts:
 
-In the settings panel at the top of the page:
-
-- **KoboldCPP (local)** — default. Expects KoboldCPP running at `localhost:5001`. No API key needed.
-- **OpenAI** — enter your API key. The key is stored in localStorage (see [Security](#security)).
-
----
-
-## Usage
-
-1. Type or paste your product insight into the text area.
-2. Click **Run All** to execute the full pipeline, or **Run this stage** on any individual stage.
-3. Each stage streams its output in real time.
-4. Edit any prompt template via the **Edit prompt template** toggle on each stage card.
-5. Click **Save** to persist a template to localStorage. Use **Export JSON** / **Import JSON** to share or back up templates.
-6. Download any completed output as a `.txt` file.
-
-If you edit the insight or rerun a stage, all downstream outputs are cleared automatically.
-
----
-
-## Architecture
-
-The codebase is organised into three distinct layers:
-
-```
-┌─────────────────────────────────────────────┐
-│                   UI Layer                  │
-│  App → WorkflowView → StageCard             │
-│  (React, CSS Modules, useReducer)           │
-└────────────────────┬────────────────────────┘
-                     │ calls
-┌────────────────────▼────────────────────────┐
-│             Orchestration Layer             │
-│  session.reducer.ts  (cascade rule)         │
-│  engine.ts           (runStage, buildPrompt)│
-│  storage/            (localStorage I/O)     │
-└────────────────────┬────────────────────────┘
-                     │ calls
-┌────────────────────▼────────────────────────┐
-│           LLM Provider Layer                │
-│  LLMProvider interface                      │
-│  OpenAIProvider  (openai npm package)       │
-│  KoboldProvider  (raw fetch + SSE)          │
-└─────────────────────────────────────────────┘
+```bash
+npm run dev
+npm run build
+npm run preview
+npm test
+npm run test:watch
+npm run lint
+npm run lint:fix
+npm run format
 ```
 
-**UI layer** — React components with CSS Modules. `App.tsx` owns all session state via `useReducer`. No global state library.
+## Configuration
 
-**Orchestration layer** — Pure functions and a pure reducer. `sessionReducer` handles the cascade rule: editing the insight or rerunning any stage clears all downstream artifacts. `engine.ts` provides `buildPrompt` (template substitution) and `runStage` (async generator that delegates to the provider).
+This project does not use `.env` files or server-side config. Runtime configuration is handled entirely in the browser UI and persisted to `localStorage`.
 
-**Provider layer** — `LLMProvider` interface. Both implementations are isolated in their own files. Adding a new provider requires only implementing the interface and registering it in `getProvider()`.
+### Where Configuration Lives
 
-### Data storage
+InsightForge stores two local keys:
 
-| Data | Storage | Persistence |
+| Key | Purpose | Source |
 |---|---|---|
-| Prompt templates | localStorage + JSON file export/import | Across sessions |
-| LLM config (provider, API key) | localStorage | Across sessions |
-| Artifacts (generated text) | React in-memory state | Session only |
-| Workflow definition | Hardcoded in `src/workflow/definition.ts` | N/A |
+| `insightforge:settings` | Active provider settings | [src/storage/settings.ts](/C:/docs/git/insightForge/src/storage/settings.ts) |
+| `insightforge:prompts` | Saved prompt templates by stage id | [src/storage/prompts.ts](/C:/docs/git/insightForge/src/storage/prompts.ts) |
 
----
+Current defaults:
 
-## Adding a new LLM provider
+- Provider: `kobold`
+- Kobold prompt format: `none`
+- OpenAI API key: unset
+- Prompt templates: built-in files under `src/prompts/`
 
-1. **Implement the interface** — create `src/providers/myprovider.provider.ts`:
+If stored settings are malformed or no longer match the expected shape, the app falls back to defaults instead of trying to recover partial state.
 
-```typescript
-import type { LLMProvider, ProviderSettings } from './types'
+### What Is Persisted And What Is Not
 
-export class MyProvider implements LLMProvider {
-  readonly name = 'myprovider' as const
+| Data | Persisted? | Notes |
+|---|---|---|
+| Provider choice | Yes | Stored in `localStorage` |
+| OpenAI API key | Yes | Stored in `localStorage` |
+| Kobold prompt format | Yes | Stored in `localStorage` |
+| Prompt templates | Yes | Stored in `localStorage`, plus JSON export/import |
+| Generated artifacts | No | In-memory session state only |
+| Generated mockup image | No | In-memory session state only, downloadable via `Save As...` |
+| Workflow definition | No | Hardcoded in source |
 
-  configure(settings: ProviderSettings): void {
-    // Store API key, initialise client, etc.
-  }
+Reloading the page keeps your provider settings and saved prompt templates. It does not keep the generated Design Brief or PRD.
 
-  async *execute(prompt: string, signal?: AbortSignal): AsyncIterable<string> {
-    // Call your API, yield text chunks.
-    // Honour the AbortSignal for cancellation.
-    // Throw descriptive errors on failure.
+### How To Reset Configuration
+
+There is no built-in "reset settings" button yet. To fully reset the app:
+
+1. Open browser DevTools.
+2. Remove `insightforge:settings` and `insightforge:prompts` from local storage for the app origin.
+3. Reload the page.
+
+## Provider Setup
+
+The provider UI is implemented in [src/components/ProviderSettings.tsx](/C:/docs/git/insightForge/src/components/ProviderSettings.tsx). Only two providers exist today: `kobold` and `openai`.
+
+### KoboldCPP
+
+Kobold is the default provider. The app sends requests to:
+
+- `POST http://localhost:5001/api/extra/generate/stream`
+
+Behavior:
+
+- Streaming is expected.
+- Requests time out after 120 seconds.
+- `max_length` is fixed at `2048`.
+- If the request fails, the UI surfaces `Cannot connect to KoboldCPP on localhost:5001 - is KoboldCPP running?`
+
+Implementation: [src/providers/kobold.provider.ts](/C:/docs/git/insightForge/src/providers/kobold.provider.ts)
+
+#### Kobold Prompt Format
+
+This matters more than the current README suggests. The selected format controls how the raw prompt is wrapped before being sent to the model.
+
+Supported values:
+
+- `none`: sends raw text unchanged
+- `gemma4`: wraps prompt in Gemma 4 instruct format
+- `chatml`: wraps prompt in ChatML format
+
+Formatting logic lives in [src/providers/prompt-formats.ts](/C:/docs/git/insightForge/src/providers/prompt-formats.ts).
+
+Use the right format for the model you are actually running:
+
+- `none` is only suitable for base or non-instruct models.
+- `gemma4` is for Gemma 4-style instruct models.
+- `chatml` is for models trained around ChatML conventions.
+
+If you pick the wrong format, the model will usually still return text, but the output quality will degrade or the instruction-following will become erratic. That is a prompt-format mismatch, not an app bug.
+
+For `gemma4`, the app also strips the model's thinking channel from the streamed response before displaying it.
+
+### OpenAI
+
+OpenAI is configured by entering an API key in the UI. The app uses the official `openai` npm package directly in the browser with `dangerouslyAllowBrowser: true`.
+
+Current behavior:
+
+- Model is fixed to `gpt-5.4-mini`
+- Requests stream token chunks into the UI
+- Timeout is 120 seconds
+- API key is redacted from surfaced error messages where possible
+
+Implementation: [src/providers/openai.provider.ts](/C:/docs/git/insightForge/src/providers/openai.provider.ts)
+
+This design is acceptable for a personal tool. It is not suitable if you need proper secret management. The API key lives in browser storage and is accessible to anyone with access to that browser profile.
+
+### OpenAI Mockup Image Generation
+
+Stage 3 generates a text prompt, not an image artifact. After Stage 3 completes, the UI exposes a separate `Generate mockup image` action that uses OpenAI image generation outside the normal text workflow.
+
+Current behavior:
+
+- OpenAI-only
+- one image per generated prompt
+- session-only persistence
+- `Save As...` downloads the current image as a PNG
+- clicking `Preview` opens the image in a lightbox
+- if Stage 3 is rerun or invalidated, the generated image is cleared
+
+Under `kobold`, Stage 3 is still shown but disabled for direct use, and `Run All` marks it as skipped.
+
+## Prompt Template Management
+
+Each stage card has an `Edit prompt template` panel. Prompt editing is local to the browser unless you explicitly export the templates.
+
+### Required Placeholder
+
+Every template must include `{{input}}`.
+
+That requirement is enforced in [src/workflow/engine.ts](/C:/docs/git/insightForge/src/workflow/engine.ts). If the placeholder is missing, stage execution fails with:
+
+```text
+Prompt template is missing the {{input}} placeholder
+```
+
+### Save, Export, Import
+
+Prompt handling lives in [src/storage/prompts.ts](/C:/docs/git/insightForge/src/storage/prompts.ts).
+
+- `Save` writes the current template set to `localStorage`
+- `Export JSON` exports all templates for the workflow, not just the visible stage
+- `Import JSON` merges imported templates into the current set
+
+The export format is versioned. Current shape:
+
+```json
+{
+  "version": 1,
+  "workflow": "insight-triage",
+  "templates": {
+    "stage-1": ".... {{input}} ....",
+    "stage-2": ".... {{input}} ....",
+    "stage-3": ".... {{input}} ...."
   }
 }
 ```
 
-2. **Add the provider name to the union type** — in `src/providers/types.ts`:
+Important detail: import validation checks `version` and that every template value is a string, but it does not enforce the `workflow` id. At the moment that means a valid export from a different workflow shape could still import if the stage ids happen to line up.
 
-```typescript
-export type ProviderName = 'openai' | 'kobold' | 'myprovider'
-```
+### Built-In Prompt Sources
 
-3. **Register in the factory** — in `src/providers/index.ts`, add a case to `getProvider()`:
+Default prompt files:
 
-```typescript
-case 'myprovider':
-  return new MyProvider()
-```
+- [src/prompts/stage1.txt](/C:/docs/git/insightForge/src/prompts/stage1.txt)
+- [src/prompts/stage2.txt](/C:/docs/git/insightForge/src/prompts/stage2.txt)
+- [src/prompts/stage3.txt](/C:/docs/git/insightForge/src/prompts/stage3.txt)
 
-4. **Add to the settings UI** — in `src/components/ProviderSettings.tsx`, add a radio option for `'myprovider'`.
+If no saved prompt state exists, these are what the UI loads.
 
-5. **Write tests** — create `src/__tests__/myprovider.provider.test.ts`. Mock `fetch` or the SDK, test the happy path, network errors, and AbortSignal behaviour. See `kobold.provider.test.ts` for a reference.
+## Runtime Behavior
 
----
+### Stage Execution Rules
 
-## Development
+- `Run All` is enabled only when the insight field is non-empty.
+- Stage 1 can run when the insight field is non-empty.
+- Stage 2 can run only when Stage 1 has completed successfully.
+- Stage 3 can run only when Stage 2 has completed successfully and the active provider is OpenAI.
+- Only one active run is supported at a time.
+- Changing provider settings or prompt text while a run is in progress is disabled in the UI.
+- When `Run All` is used under Kobold, Stage 3 is marked as skipped rather than left empty.
+
+### Cancellation
+
+Clicking `Cancel` aborts the active request. The app uses `AbortController` for both OpenAI and Kobold requests.
+
+### Error Handling
+
+Errors are shown per stage. Typical failure cases:
+
+- missing `{{input}}` in a prompt template
+- no OpenAI API key configured
+- OpenAI network/API errors
+- KoboldCPP not running on `localhost:5001`
+- malformed provider response
+
+If a stage fails during `Run All`, the pipeline stops at that stage.
+
+## Architecture
+
+The codebase is split into three practical layers:
+
+- UI components in `src/components/`
+- workflow orchestration and reducer logic in `src/workflow/`
+- provider implementations in `src/providers/`
+
+Key files:
+
+- [src/components/App.tsx](/C:/docs/git/insightForge/src/components/App.tsx): top-level orchestration, persistence hooks, run/cancel flow
+- [src/workflow/engine.ts](/C:/docs/git/insightForge/src/workflow/engine.ts): prompt building and stage execution
+- [src/workflow/session.reducer.ts](/C:/docs/git/insightForge/src/workflow/session.reducer.ts): cascade clearing rules
+- [src/storage/settings.ts](/C:/docs/git/insightForge/src/storage/settings.ts): provider settings validation and persistence
+- [src/storage/prompts.ts](/C:/docs/git/insightForge/src/storage/prompts.ts): prompt persistence and JSON import/export
+- [src/providers/index.ts](/C:/docs/git/insightForge/src/providers/index.ts): provider factory
+
+## Extending Configuration
+
+If you add a new provider or new provider-specific settings, there are several places to update. The old README only covered the provider class itself; that is incomplete.
+
+For a new provider:
+
+1. Add the provider name to [src/providers/types.ts](/C:/docs/git/insightForge/src/providers/types.ts).
+2. Implement `LLMProvider` in a new provider file under `src/providers/`.
+3. Register it in [src/providers/index.ts](/C:/docs/git/insightForge/src/providers/index.ts).
+4. Add UI controls in [src/components/ProviderSettings.tsx](/C:/docs/git/insightForge/src/components/ProviderSettings.tsx).
+5. Update `isProviderSettings` in [src/storage/settings.ts](/C:/docs/git/insightForge/src/storage/settings.ts) so persisted settings validate correctly.
+6. Add or update tests under `src/__tests__/`.
+
+If you add a new config field to an existing provider:
+
+1. Extend `ProviderSettings`.
+2. Update the settings UI.
+3. Update storage validation in `src/storage/settings.ts`.
+4. Ensure the provider reads the new setting in `configure()`.
+5. Add tests for load/save fallback behavior.
+
+If you skip step 5 in either case, the app may silently discard stored settings by falling back to defaults.
+
+## Testing
+
+Tests live under [src/__tests__](/C:/docs/git/insightForge/src/__tests__).
+
+Relevant coverage already exists for:
+
+- settings storage fallback and persistence
+- prompt storage and import/export validation
+- workflow reducer behavior
+- provider streaming behavior
+- OpenAI image generation helper behavior
+
+Run them with:
 
 ```bash
-npm run dev          # start dev server (hot reload)
-npm test             # run full test suite
-npm run test:watch   # run tests in watch mode
-npm run lint         # lint with ESLint (strict TypeScript rules)
-npm run lint:fix     # auto-fix lint issues
-npm run format       # format with Prettier
-npm run build        # production build (tsc + vite)
+npm test
 ```
 
----
+Lint with:
+
+```bash
+npm run lint
+```
 
 ## Security
 
-**API keys are stored in localStorage.** This is intentional for a personal, single-user tool. It means:
+The security model is simple:
 
-- Anyone with access to your browser's DevTools can read your API key.
-- Do not use this on shared or public machines.
-- API keys are never logged or included in error messages (the provider implementations sanitise errors before surfacing them).
+- OpenAI API keys are stored in `localStorage`
+- all LLM calls are made directly from the browser
+- there is no backend proxy
 
-If you need stronger key security, host this behind a backend that proxies LLM calls and handles auth server-side.
+That is fine for local personal use. It is the wrong design for a shared deployment, team environment, or anything that needs proper secret isolation.
 
----
+If you need stronger controls, add a backend and move provider credentials server-side.
+
+## Deployment
+
+Because this is a static SPA, a production build is just:
+
+```bash
+npm run build
+```
+
+The output goes to `dist/`. You can host that on any static file host. The main constraint is operational, not build-related: the deployed browser still needs direct access to whichever provider you selected.
+
+In practice:
+
+- OpenAI works anywhere the browser can reach the OpenAI API and the user is willing to expose a key in-browser.
+- Kobold only works when the browser can reach the local or networked KoboldCPP instance configured by the code. Right now that endpoint is hardcoded to `http://localhost:5001`.
 
 ## Licence
 

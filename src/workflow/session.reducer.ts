@@ -9,6 +9,7 @@ export type SessionAction =
   | { type: 'APPEND_ARTIFACT_CHUNK'; stageId: string; chunk: string }
   | { type: 'SET_ARTIFACT_STATUS'; stageId: string; status: StageStatus }
   | { type: 'SET_ARTIFACT_ERROR'; stageId: string; error: string }
+  | { type: 'SET_ARTIFACT_SKIPPED'; stageId: string; reason?: string }
 
 export const INITIAL_SESSION: SessionState = {
   insight: '',
@@ -85,6 +86,21 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
             content: existing?.content ?? '',
             status: 'error',
             error: action.error,
+          },
+        },
+      }
+    }
+
+    case 'SET_ARTIFACT_SKIPPED': {
+      return {
+        ...state,
+        artifacts: {
+          ...state.artifacts,
+          [action.stageId]: {
+            stageId: action.stageId,
+            content: '',
+            status: 'skipped',
+            error: action.reason,
           },
         },
       }

@@ -1,4 +1,4 @@
-export type StageStatus = 'empty' | 'waiting' | 'streaming' | 'complete' | 'error'
+export type StageStatus = 'empty' | 'waiting' | 'streaming' | 'complete' | 'error' | 'skipped'
 
 export interface Stage {
   readonly id: string

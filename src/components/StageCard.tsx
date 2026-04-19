@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Artifact, Stage } from '../workflow/types'
 import StatusBadge from './StatusBadge'
 import ArtifactDisplay from './ArtifactDisplay'
@@ -10,6 +11,9 @@ interface Props {
   template: string
   isRunning: boolean
   canRun: boolean
+  runLabel?: string
+  unavailableReason?: string
+  extraContent?: ReactNode
   onRun: () => void
   onRetry: () => void
   onTemplateChange: (value: string) => void
@@ -24,6 +28,9 @@ export default function StageCard({
   template,
   isRunning,
   canRun,
+  runLabel = 'Run this stage',
+  unavailableReason,
+  extraContent,
   onRun,
   onRetry,
   onTemplateChange,
@@ -54,6 +61,10 @@ export default function StageCard({
       />
 
       <ArtifactDisplay artifact={artifact} stageName={stage.name} />
+      {extraContent}
+      {unavailableReason && (
+        <p className={styles.note}>{unavailableReason}</p>
+      )}
 
       <div className={styles.actions}>
         {status === 'error' && (
@@ -66,7 +77,7 @@ export default function StageCard({
           onClick={onRun}
           disabled={!canRun || isActive}
         >
-          {isActive ? 'Running…' : 'Run this stage'}
+          {isActive ? 'Running…' : runLabel}
         </button>
       </div>
     </div>

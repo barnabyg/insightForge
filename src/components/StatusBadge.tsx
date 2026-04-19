@@ -7,6 +7,7 @@ const LABELS: Record<StageStatus, string> = {
   streaming: 'Streaming',
   complete: 'Complete',
   error: 'Error',
+  skipped: 'Skipped',
 }
 
 interface Props {
